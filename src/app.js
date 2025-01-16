@@ -16,4 +16,9 @@ app.use(express.urlencoded({ extended: true, limit: "16kb" }));
 app.use(express.static("public"));
 app.use(cookieParser());
 
+// routes
+const authRoutes = require("./routes/auth.routes");
+
+app.use("/api/auth", authRoutes);
+
 module.exports = app;
