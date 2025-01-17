@@ -4,6 +4,7 @@ const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
 const { google } = require("googleapis");
 const axios = require("axios");
+const jwt = require("jsonwebtoken");
 
 const register = asyncHandler(async (req, res) => {
   //get user details from client
@@ -200,7 +201,50 @@ const logout = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, {}, "Logout successful"));
 });
 
-const refreshTokens = asyncHandler(async (req, res) => {});
+const refreshTokens = asyncHandler(async (req, res) => {
+  try {
+    const token =
+      req.cookies.refreshToken ||
+      req.header("Authorization")?.replace("Bearer ", "");
+    if (!token) {
+      throw new ApiError(400, "No refresh token provided");
+    }
+    const decoded = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET);
+    const user = await User.findById(decoded._id);
+    if (!user) {
+      throw new ApiError(400, "Invalid refresh token");
+    }
+    if (user.refreshToken !== token) {
+      throw new ApiError(400, "Invalid refresh token");
+    }
+    const accessToken = await user.generateAccessToken();
+    const refreshToken = await user.generateRefreshToken();
+    user.refreshToken = refreshToken;
+    await user.save({ validateBeforeSave: false });
+
+    //cookie options
+    const options = {
+      httpOnly: true,
+      secure: true,
+      sameSite: "none",
+    };
+
+    //response
+    res
+      .status(200)
+      .cookie("accessToken", accessToken, options)
+      .cookie("refreshToken", refreshToken, options)
+      .json(
+        new ApiResponse(
+          200,
+          { accessToken, refreshToken },
+          "Tokens refreshed successfully"
+        )
+      );
+  } catch (error) {
+    throw new ApiError(400, error?.message || "Invalid refresh token");
+  }
+});
 
 const changePassword = asyncHandler(async (req, res) => {});
 
