@@ -2,6 +2,8 @@ const asyncHandler = require("../utils/asyncHandler");
 const User = require("../models/user.model");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
+const { google } = require("googleapis");
+const axios = require("axios");
 
 const register = asyncHandler(async (req, res) => {
   //get user details from client
@@ -73,6 +75,11 @@ const login = asyncHandler(async (req, res) => {
     throw new ApiError(401, "Invalid email");
   }
 
+  // check if password field exists
+  if (!user.password) {
+    throw new ApiError(401, "Please login with Google");
+  }
+
   // check if password is correct
   const isPasswordCorrect = await user.isPasswordCorrect(password);
 
@@ -110,6 +117,63 @@ const login = asyncHandler(async (req, res) => {
         "Login successful"
       )
     );
+});
+
+const googleLogin = asyncHandler(async (req, res) => {
+  try {
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      "postmessage"
+    );
+    const { code } = req.query;
+    const googleResponse = await oauth2Client.getToken(code);
+    oauth2Client.setCredentials(googleResponse.tokens);
+    const url = `https://www.googleapis.com/oauth2/v1/userinfo?alt=json&access_token="${googleResponse.tokens.access_token}"`;
+    const userResponse = await axios.get(url);
+    const { email, name, picture } = userResponse.data;
+    const user = await User.findOne({ email });
+    if (!user) {
+      const newUser = await User.create({
+        fullName: name,
+        username: email,
+        email: email,
+        avatar: picture,
+        isVerified: true,
+      });
+    }
+    const createdUser = await User.findOne({ email });
+    const accessToken = await createdUser.generateAccessToken();
+    const refreshToken = await createdUser.generateRefreshToken();
+    createdUser.refreshToken = refreshToken;
+    await createdUser.save({ validateBeforeSave: false });
+
+    const loggedInUser = await User.findById(createdUser._id).select(
+      "-password -refreshToken"
+    );
+
+    //cookie options
+    const options = {
+      httpOnly: true,
+      secure: true,
+      sameSite: "none",
+    };
+
+    // return response
+    res
+      .status(200)
+      .cookie("accessToken", accessToken, options)
+      .cookie("refreshToken", refreshToken, options)
+      .json(
+        new ApiResponse(
+          200,
+          { user: loggedInUser, accessToken, refreshToken },
+          "Login successful"
+        )
+      );
+  } catch (error) {
+    throw new ApiError(500, "Google login failed");
+  }
 });
 
 const logout = asyncHandler(async (req, res) => {
@@ -151,6 +215,7 @@ const getCurrentUser = asyncHandler(async (req, res) => {
 module.exports = {
   register,
   login,
+  googleLogin,
   logout,
   refreshTokens,
   changePassword,
