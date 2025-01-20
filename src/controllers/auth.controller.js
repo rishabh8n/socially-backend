@@ -5,6 +5,7 @@ const ApiResponse = require("../utils/ApiResponse");
 const { google } = require("googleapis");
 const axios = require("axios");
 const jwt = require("jsonwebtoken");
+const { sendVerificationEmail } = require("../resend/resend");
 
 const register = asyncHandler(async (req, res) => {
   //get user details from client
@@ -34,30 +35,152 @@ const register = asyncHandler(async (req, res) => {
     throw new ApiError(400, "User with this username already exists.");
   }
 
-  // TODO: handle unverified users
-
-  // create new user
-  const user = await User.create({
-    username: username.toLowerCase(),
-    email,
-    password,
-    isVerified: true, // TODO: handle email verification
+  // check if user exists but not verified
+  const unverifiedUser = await User.findOne({
+    username,
+    isVerified: false,
   });
 
+  if (unverifiedUser) {
+    if (
+      unverifiedUser.email !== email &&
+      unverifiedUser.verifyCodeExpiry > Date.now()
+    ) {
+      throw new ApiError(400, "User with this username already exists.");
+    } else if (
+      unverifiedUser.email !== email &&
+      unverifiedUser.verifyCodeExpiry < Date.now()
+    ) {
+      await unverifiedUser.deleteOne();
+    }
+  }
+
+  // TODO: handle unverified users
+  const unverifiedExistingUser = await User.findOne({
+    email,
+  });
+
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiry = new Date(Date.now() + 30 * 60 * 1000);
+
+  if (unverifiedExistingUser) {
+    unverifiedExistingUser.username = username;
+    unverifiedExistingUser.password = password;
+    unverifiedExistingUser.verifyCode = code;
+    unverifiedExistingUser.verifyCodeExpiry = expiry;
+    await unverifiedExistingUser.save();
+  } else {
+    // create new user
+    const user = await User.create({
+      username: username,
+      email,
+      password,
+      isVerified: false,
+      verifyCode: code,
+      verifyCodeExpiry: expiry,
+    });
+  }
   // check if user is created
   const createdUser = await User.findOne({ email }).select(
-    "-password -refreshToken"
+    "-password -refreshToken -verifyCode -verifyCodeExpiry"
   );
   if (!createdUser) {
     throw new ApiError(500, "User not created");
   }
 
   // TODO: send verification email
+  await sendVerificationEmail(email, username, code);
 
   // return response
   res
     .status(201)
-    .json(new ApiResponse(201, createdUser, "User registered successfully"));
+    .json(
+      new ApiResponse(
+        201,
+        createdUser,
+        "User registered successfully. Please verify your email"
+      )
+    );
+});
+
+const verifyEmail = asyncHandler(async (req, res) => {
+  const { email, code } = req.body;
+  if (!email || !code) {
+    throw new ApiError(400, "Email and code are required");
+  }
+  const user = await User.findOne({ email });
+  if (!user) {
+    throw new ApiError(400, "User not found");
+  }
+
+  if (user.isVerified) {
+    throw new ApiError(400, "User already verified");
+  }
+
+  if (user.verifyCode !== code) {
+    throw new ApiError(400, "Invalid verification code");
+  }
+  if (user.verifyCodeExpiry < Date.now()) {
+    throw new ApiError(400, "Verification code expired");
+  }
+  user.isVerified = true;
+  user.verifyCode = undefined;
+  user.verifyCodeExpiry = undefined;
+
+  // generate tokens
+  const accessToken = await user.generateAccessToken();
+  const refreshToken = await user.generateRefreshToken();
+
+  user.refreshToken = refreshToken;
+  await user.save({ validateBeforeSave: false });
+
+  const loggedInUser = await User.findById(user._id).select(
+    "-password -refreshToken -verifyCode -verifyCodeExpiry"
+  );
+
+  //cookie options
+  const options = {
+    httpOnly: true,
+    secure: true,
+    sameSite: "none",
+  };
+
+  // return response
+  res
+    .status(200)
+    .cookie("accessToken", accessToken, options)
+    .cookie("refreshToken", refreshToken, options)
+    .json(
+      new ApiResponse(
+        200,
+        { user: loggedInUser, accessToken, refreshToken },
+        "Verification successful"
+      )
+    );
+});
+
+const resendEmail = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+  if (!email) {
+    throw new ApiError(400, "Email is required");
+  }
+  const user = await User.findOne({ email });
+  if (!user) {
+    throw new ApiError(400, "User does not exist. Please register.");
+  }
+  if (user.isVerified) {
+    throw new ApiError(400, "User is already verified");
+  }
+
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiry = new Date(Date.now() + 30 * 60 * 1000);
+  user.verifyCode = code;
+  user.verifyCodeExpiry = expiry;
+  await user.save({ validateBeforeSave: false });
+  await sendVerificationEmail(user.email, user.username, code);
+  res
+    .status(201)
+    .json(new ApiResponse(201, {}, "Verification email sent successfully."));
 });
 
 const login = asyncHandler(async (req, res) => {
@@ -96,7 +219,7 @@ const login = asyncHandler(async (req, res) => {
   await user.save({ validateBeforeSave: false });
 
   const loggedInUser = await User.findById(user._id).select(
-    "-password -refreshToken"
+    "-password -refreshToken -verifyCode -verifyCodeExpiry"
   );
 
   //cookie options
@@ -265,4 +388,6 @@ module.exports = {
   changePassword,
   resetPassword,
   getCurrentUser,
+  verifyEmail,
+  resendEmail,
 };
