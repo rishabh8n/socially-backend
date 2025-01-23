@@ -14,6 +14,18 @@ const verificationTemplate = ({ username, verifyCode }) => {
     `;
 };
 
+const resetPasswordTemplate = (username, link) => {
+  return `
+    <div style="background-color:#fff;padding:20px;text-align:center;border-radius:5px;">
+    <h1>Reset your password</h1>
+    <h2>Hello ${username}</h2>
+    <p>We've received a password reset request for your account. Please enter the following code to reset your password</p>
+    <a href=${link} style="background-color:#000;color:#fff;padding:10px;border-radius:5px;text-decoration:none;">
+    Reset Password</a>
+    </div>
+    `;
+};
+
 const sendVerificationEmail = async (email, username, verifyCode) => {
   try {
     const { data, error } = await resend.emails.send({
@@ -35,4 +47,25 @@ const sendVerificationEmail = async (email, username, verifyCode) => {
   }
 };
 
-module.exports = { sendVerificationEmail };
+const sendPasswordResetEmail = async (email, username, resetLink) => {
+  try {
+    const { data, error } = await resend.emails.send({
+      from: "Socially <noreply@mails.flyingermany.site>",
+      to: email,
+      subject: "Reset your password",
+      html: resetPasswordTemplate(username, resetLink),
+    });
+    if (error) {
+      console.log(error);
+      console.log("Error sending password reset email");
+      throw new ApiError(500, error.message);
+    }
+  } catch (error) {
+    throw new ApiError(
+      500,
+      error.message || "Error sending password reset email"
+    );
+  }
+};
+
+module.exports = { sendVerificationEmail, sendPasswordResetEmail };

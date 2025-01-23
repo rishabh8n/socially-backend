@@ -47,6 +47,9 @@ const userSchema = new mongoose.Schema(
     verifyCodeExpiry: {
       type: Date,
     },
+    passwordResetToken: {
+      type: String,
+    },
   },
   { timestamps: true }
 );
@@ -74,6 +77,12 @@ userSchema.methods.generateAccessToken = function () {
 userSchema.methods.generateRefreshToken = function () {
   return jwt.sign({ _id: this._id }, process.env.REFRESH_TOKEN_SECRET, {
     expiresIn: process.env.REFRESH_TOKEN_EXPIRY,
+  });
+};
+
+userSchema.methods.generatePasswordResetToken = function () {
+  return jwt.sign({ _id: this._id }, process.env.PASSWORD_RESET_TOKEN_SECRET, {
+    expiresIn: process.env.PASSWORD_RESET_TOKEN_EXPIRY,
   });
 };
 

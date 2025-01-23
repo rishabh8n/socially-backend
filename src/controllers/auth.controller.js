@@ -5,7 +5,10 @@ const ApiResponse = require("../utils/ApiResponse");
 const { google } = require("googleapis");
 const axios = require("axios");
 const jwt = require("jsonwebtoken");
-const { sendVerificationEmail } = require("../resend/resend");
+const {
+  sendVerificationEmail,
+  sendPasswordResetEmail,
+} = require("../resend/resend");
 
 const register = asyncHandler(async (req, res) => {
   //get user details from client
@@ -369,9 +372,47 @@ const refreshTokens = asyncHandler(async (req, res) => {
   }
 });
 
-const changePassword = asyncHandler(async (req, res) => {});
+const forgotPassword = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+  if (!email) {
+    throw new ApiError(400, "Email is required");
+  }
+  const user = await User.findOne({ email });
+  if (!user) {
+    throw new ApiError(400, "User not found");
+  }
+  const token = await user.generatePasswordResetToken();
+  const resetLink = `${process.env.CLIENT_URL}/auth/reset-password/${token}`;
+  user.passwordResetToken = token;
+  await user.save({ validateBeforeSave: false });
+  sendPasswordResetEmail(user.email, user.username, resetLink);
+  res
+    .status(200)
+    .json(new ApiResponse(200, {}, "Password reset email sent successfully"));
+});
 
-const resetPassword = asyncHandler(async (req, res) => {});
+const resetPassword = asyncHandler(async (req, res) => {
+  const { token } = req.params;
+  const { password } = req.body;
+  if (!token || !password) {
+    throw new ApiError(400, "Token and password are required");
+  }
+  const decoded = jwt.verify(token, process.env.PASSWORD_RESET_TOKEN_SECRET);
+  if (!decoded) {
+    throw new ApiError(400, "Invalid token");
+  }
+  const user = await User.findById(decoded._id);
+  if (!user) {
+    throw new ApiError(400, "Invalid token");
+  }
+  if (user.passwordResetToken !== token) {
+    throw new ApiError(400, "Invalid token");
+  }
+  user.password = password;
+  user.passwordResetToken = undefined;
+  await user.save();
+  res.status(200).json(new ApiResponse(200, {}, "Password reset successful"));
+});
 
 const getCurrentUser = asyncHandler(async (req, res) => {
   return res
@@ -385,7 +426,7 @@ module.exports = {
   googleLogin,
   logout,
   refreshTokens,
-  changePassword,
+  forgotPassword,
   resetPassword,
   getCurrentUser,
   verifyEmail,
