@@ -381,6 +381,12 @@ const forgotPassword = asyncHandler(async (req, res) => {
   if (!user) {
     throw new ApiError(400, "User not found");
   }
+  if (!user.isVerified) {
+    throw new ApiError(400, "User is not verified, sign up again");
+  }
+  if (!user.password) {
+    throw new ApiError(400, "User signed up with Google, sign in with google.");
+  }
   const token = await user.generatePasswordResetToken();
   const resetLink = `${process.env.CLIENT_URL}/auth/reset-password/${token}`;
   user.passwordResetToken = token;
