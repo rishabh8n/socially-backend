@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const mongooseAggregatePaginate = require("mongoose-aggregate-paginate-v2");
 
 const userSchema = new mongoose.Schema(
   {
@@ -85,6 +86,8 @@ userSchema.methods.generatePasswordResetToken = function () {
     expiresIn: process.env.PASSWORD_RESET_TOKEN_EXPIRY,
   });
 };
+
+userSchema.plugin(mongooseAggregatePaginate);
 
 const User = mongoose.model("User", userSchema);
 module.exports = User;
