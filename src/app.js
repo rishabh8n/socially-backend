@@ -18,7 +18,9 @@ app.use(cookieParser());
 
 // routes
 const authRoutes = require("./routes/auth.routes");
+const profileRoutes = require("./routes/profile.routes");
 
 app.use("/api/auth", authRoutes);
+app.use("/api/profile", profileRoutes);
 
 module.exports = app;
