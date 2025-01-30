@@ -166,10 +166,29 @@ const updateProfile = asyncHandler(async (req, res, next) => {
   return res.status(201).json(new ApiResponse(201, user, "Profile updated"));
 });
 
+const usernameAvailable = asyncHandler(async (req, res, next) => {
+  const { username } = req.body;
+  if (!username) {
+    throw new ApiError(400, "Username is required");
+  }
+  const existingUser = await User.findOne({ username });
+  if (existingUser) {
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(200, { available: false }, "Username not available")
+      );
+  }
+  return res
+    .status(200)
+    .json(new ApiResponse(200, { available: true }, "Username available"));
+});
+
 module.exports = {
   getProfile,
   followUser,
   unfollowUser,
   updateAvatar,
   updateProfile,
+  usernameAvailable,
 };
