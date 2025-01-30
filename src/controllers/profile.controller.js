@@ -51,6 +51,8 @@ const getProfile = asyncHandler(async (req, res, next) => {
         followersCount: 1,
         followingCount: 1,
         isFollowing: 1,
+        bio: 1,
+        gender: 1,
       },
     },
   ]);
@@ -133,9 +135,41 @@ const updateAvatar = asyncHandler(async (req, res, next) => {
     .json(new ApiResponse(201, { avatar: avatar.url }, "Avatar updated"));
 });
 
+const updateProfile = asyncHandler(async (req, res, next) => {
+  const { fullName, username, bio, gender } = req.body;
+  if (!fullName || !username) {
+    throw new ApiError(400, "Full name and username are required");
+  }
+  const existingUser = await User.findOne({
+    username: username.toLowerCase().trim(),
+  });
+  if (existingUser && existingUser._id.toString() !== req.user._id.toString()) {
+    throw new ApiError(400, "Username already taken");
+  }
+  const user = await User.findByIdAndUpdate(
+    req.user?._id,
+    {
+      $set: {
+        fullName,
+        username: username.toLowerCase().trim(),
+        bio: bio || "",
+        gender: gender || "",
+      },
+    },
+    {
+      new: true,
+    }
+  ).select("-password -refreshToken -verifyCode -verifyCodeExpiry");
+  if (!user) {
+    throw new ApiError(500, "Failed to update profile");
+  }
+  return res.status(201).json(new ApiResponse(201, user, "Profile updated"));
+});
+
 module.exports = {
   getProfile,
   followUser,
   unfollowUser,
   updateAvatar,
+  updateProfile,
 };

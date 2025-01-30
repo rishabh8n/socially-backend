@@ -35,6 +35,12 @@ const userSchema = new mongoose.Schema(
     avatar: {
       type: String,
     },
+    bio: {
+      type: String,
+    },
+    gender: {
+      type: String,
+    },
     refreshToken: {
       type: String,
     },

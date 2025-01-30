@@ -5,6 +5,7 @@ const {
   followUser,
   unfollowUser,
   updateAvatar,
+  updateProfile,
 } = require("../controllers/profile.controller");
 const { upload } = require("../middlewares/multer");
 
@@ -16,4 +17,5 @@ router.route("/unfollow").post(verifyJWT, unfollowUser);
 router
   .route("/update-avatar")
   .put(verifyJWT, upload.single("avatar"), updateAvatar);
+router.route("/update-profile").put(verifyJWT, updateProfile);
 module.exports = router;
