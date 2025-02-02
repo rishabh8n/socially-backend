@@ -14,6 +14,7 @@ const uploadOnCloud = async (filePath) => {
     }
     const response = await v2.uploader.upload(filePath, {
       resource_type: "auto",
+      transformation: [{ width: 500, height: 500, crop: "limit" }],
     });
     fs.unlinkSync(filePath);
     return response;

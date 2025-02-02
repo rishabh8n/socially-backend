@@ -3,6 +3,8 @@ const User = require("../models/user.model");
 const Follow = require("../models/follow.model");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
+const mongoose = require("mongoose");
+const { ObjectId } = mongoose.Types;
 const { uploadOnCloud, deleteFromCloud } = require("../utils/cloudinary");
 
 const getProfile = asyncHandler(async (req, res, next) => {
@@ -184,6 +186,132 @@ const usernameAvailable = asyncHandler(async (req, res, next) => {
     .json(new ApiResponse(200, { available: true }, "Username available"));
 });
 
+const getFollowers = asyncHandler(async (req, res, next) => {
+  const username = req.params.username;
+  if (!username) {
+    throw new ApiError(400, "Username is required");
+  }
+  const user = await User.findOne({
+    username: username?.toLowerCase().trim(),
+    isVerified: true,
+  });
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+  const followers = await Follow.aggregate([
+    { $match: { following: user._id } },
+    {
+      $lookup: {
+        from: "users",
+        localField: "follower",
+        foreignField: "_id",
+        as: "followerDetails",
+      },
+    },
+    {
+      $unwind: "$followerDetails",
+    },
+    {
+      $lookup: {
+        from: "follows",
+        let: { followerId: "$followerDetails._id" },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  { $eq: ["$follower", req.user._id] },
+                  { $eq: ["$following", "$$followerId"] },
+                ],
+              },
+            },
+          },
+        ],
+        as: "isFollowing",
+      },
+    },
+    {
+      $addFields: {
+        isFollowing: { $gt: [{ $size: "$isFollowing" }, 0] },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        followerId: "$followerDetails._id",
+        fullName: "$followerDetails.fullName",
+        username: "$followerDetails.username",
+        avatar: "$followerDetails.avatar",
+        isFollowing: 1,
+      },
+    },
+  ]);
+  return res.status(200).json(new ApiResponse(200, followers, "Followers"));
+});
+
+const getFollowing = asyncHandler(async (req, res, next) => {
+  const username = req.params.username;
+  if (!username) {
+    throw new ApiError(400, "Username is required");
+  }
+  const user = await User.findOne({
+    username: username?.toLowerCase().trim(),
+    isVerified: true,
+  });
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+  const following = await Follow.aggregate([
+    { $match: { follower: user._id } },
+    {
+      $lookup: {
+        from: "users",
+        localField: "following",
+        foreignField: "_id",
+        as: "followingDetails",
+      },
+    },
+    {
+      $unwind: "$followingDetails",
+    },
+    {
+      $lookup: {
+        from: "follows",
+        let: { followingId: "$followingDetails._id" },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  { $eq: ["$follower", req.user._id] },
+                  { $eq: ["$following", "$$followingId"] },
+                ],
+              },
+            },
+          },
+        ],
+        as: "isFollowing",
+      },
+    },
+    {
+      $addFields: {
+        isFollowing: { $gt: [{ $size: "$isFollowing" }, 0] },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        followingId: "$followingDetails._id",
+        fullName: "$followingDetails.fullName",
+        username: "$followingDetails.username",
+        avatar: "$followingDetails.avatar",
+        isFollowing: 1,
+      },
+    },
+  ]);
+  return res.status(200).json(new ApiResponse(200, following, "Following"));
+});
+
 module.exports = {
   getProfile,
   followUser,
@@ -191,4 +319,6 @@ module.exports = {
   updateAvatar,
   updateProfile,
   usernameAvailable,
+  getFollowers,
+  getFollowing,
 };
