@@ -19,8 +19,10 @@ app.use(cookieParser());
 // routes
 const authRoutes = require("./routes/auth.routes");
 const profileRoutes = require("./routes/profile.routes");
+const searchRoutes = require("./routes/search.routes");
 
 app.use("/api/auth", authRoutes);
 app.use("/api/profile", profileRoutes);
+app.use("/api/search", searchRoutes);
 
 module.exports = app;
